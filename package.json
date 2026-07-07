@@ -22,8 +22,8 @@
     "test": "node --test test/unit/*.test.js",
     "test:e2e": "playwright test",
     "icon": "python3 scripts/make_icon.py",
-    "dist:mac": "electron-builder --mac --universal",
-    "dist:win": "electron-builder --win --x64",
+    "dist:mac": "electron-builder --mac --universal --publish never",
+    "dist:win": "electron-builder --win --x64 --publish never",
     "dist": "npm run dist:mac && npm run dist:win"
   },
   "devDependencies": {
