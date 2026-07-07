@@ -1,9 +1,17 @@
 # Hermes Setup Wizard
 
+[![CI](https://github.com/QuietSentinelShadow/hermes-setup-wizard/actions/workflows/ci.yml/badge.svg)](https://github.com/QuietSentinelShadow/hermes-setup-wizard/actions/workflows/ci.yml)
+[![Release](https://github.com/QuietSentinelShadow/hermes-setup-wizard/actions/workflows/release.yml/badge.svg)](https://github.com/QuietSentinelShadow/hermes-setup-wizard/actions/workflows/release.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
 A Mac/Windows desktop app that installs and configures the
 [NousResearch Hermes Agent](https://github.com/NousResearch/Hermes-Agent)
 through a friendly step-by-step wizard — made for sharing with friends who
 don't live in a terminal.
+
+**Download:** grab the latest `.dmg` (macOS) or `.exe` (Windows) from the
+[**Releases**](https://github.com/QuietSentinelShadow/hermes-setup-wizard/releases)
+page.
 
 **What it sets up**
 
@@ -66,20 +74,36 @@ Useful env vars: `HERMES_SETUP_MOCK=1` (simulate installer/pairing),
 
 ## Releasing a new version
 
+Releases are automated. The [`release` workflow](.github/workflows/release.yml)
+builds the Mac and Windows installers and publishes them to a GitHub Release
+whenever you push a `v*` tag.
+
 1. Bump `version` in `package.json`.
-2. Add a section to `CHANGELOG.md` — this is what users read under
-   **What's new**, and (via the GitHub release body) in the update prompt.
-3. `npm test && npm run test:e2e && npm run dist`
-4. Create a GitHub release tagged `v<version>` on the
-   `amtocbot/hermes-setup-wizard` repo, paste the changelog section into the
-   release notes, and attach the artifacts from `dist/`
-   (`…-mac-universal.dmg` and `…-win-x64.exe` at minimum).
-5. Installed apps will offer the new version with those notes on their next
-   update check; the installers upgrade in place.
+2. Add a section to `CHANGELOG.md` headed `## <version> — <date>` — this is
+   what users read under **What's new**, and what the release job extracts into
+   the GitHub Release body (which the in-app updater shows).
+3. Commit, then tag and push:
+   ```bash
+   git commit -am "Release v1.0.1"
+   git tag v1.0.1
+   git push origin main --tags
+   ```
+4. CI builds `…-mac-universal.dmg` + `…-win-x64.exe`, creates the
+   `v1.0.1` Release, and attaches them. Installed apps offer the update with
+   those notes on their next check; the installers upgrade in place.
+
+To cut a release by hand instead: `npm test && npm run test:e2e && npm run dist`,
+then `gh release create v1.0.1 dist/*.dmg dist/*.exe --notes-file <notes>`.
 
 > Note: fully silent auto-update (electron-updater) needs code-signing
 > certificates on macOS. The current flow — notify, show notes, download,
 > run installer — works unsigned.
+
+## Contributing
+
+Issues and pull requests are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
+Every PR runs the [CI workflow](.github/workflows/ci.yml) (unit + end-to-end
+tests on Linux, macOS and Windows). Licensed under [MIT](LICENSE).
 
 ## Architecture
 

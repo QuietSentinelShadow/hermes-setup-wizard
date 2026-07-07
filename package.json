@@ -9,6 +9,14 @@
     "name": "AMTOC",
     "email": "amtocbot@gmail.com"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/QuietSentinelShadow/hermes-setup-wizard.git"
+  },
+  "homepage": "https://github.com/QuietSentinelShadow/hermes-setup-wizard#readme",
+  "bugs": {
+    "url": "https://github.com/QuietSentinelShadow/hermes-setup-wizard/issues"
+  },
   "scripts": {
     "start": "electron .",
     "test": "node --test test/unit/*.test.js",

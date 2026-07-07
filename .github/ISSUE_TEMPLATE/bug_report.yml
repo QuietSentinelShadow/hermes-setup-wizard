@@ -1,0 +1,52 @@
+name: Bug report
+description: Something in the wizard didn't work as expected
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report! Please don't include API keys or bot tokens in
+        anything you paste here.
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: e.g. macOS 15 (Apple Silicon) / Windows 11
+    validations:
+      required: true
+  - type: input
+    id: app-version
+    attributes:
+      label: App version
+      description: Shown in the wizard sidebar (e.g. "Hermes Setup Wizard v1.0.0").
+      placeholder: v1.0.0
+    validations:
+      required: true
+  - type: dropdown
+    id: step
+    attributes:
+      label: Which step?
+      options:
+        - Welcome / detection
+        - Install Hermes
+        - Models & providers
+        - Telegram
+        - WhatsApp
+        - Finish / gateway
+        - Updates
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant output
+      description: Any error text or log shown in the app (secrets removed).
+      render: shell

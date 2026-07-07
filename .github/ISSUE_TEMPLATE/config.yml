@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/QuietSentinelShadow/hermes-setup-wizard/security/advisories/new
+    about: Please report security issues privately, not as public issues.
+  - name: Hermes Agent itself
+    url: https://github.com/NousResearch/Hermes-Agent/issues
+    about: For bugs in the Hermes Agent (not this installer), file upstream.
