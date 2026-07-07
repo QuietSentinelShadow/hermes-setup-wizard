@@ -127,6 +127,32 @@ test('modelConfigCommands throws for unknown providers', () => {
   assert.throws(() => hermes.modelConfigCommands('nope', 'x'), /unknown provider/);
 });
 
+test('launcherSpawn passes .exe / POSIX launchers through unchanged', () => {
+  const s = hermes.launcherSpawn('/home/u/.local/bin/hermes', ['doctor']);
+  assert.strictEqual(s.cmd, '/home/u/.local/bin/hermes');
+  assert.deepStrictEqual(s.args, ['doctor']);
+  assert.deepStrictEqual(s.options, {});
+
+  const exe = hermes.launcherSpawn('C:\\hermes\\bin\\hermes.exe', ['gateway', 'start']);
+  assert.strictEqual(exe.cmd, 'C:\\hermes\\bin\\hermes.exe');
+  assert.deepStrictEqual(exe.options, {}); // .exe never needs a shell
+});
+
+test('launcherSpawn wraps Windows .cmd/.bat and .ps1 launchers', () => {
+  // Force the Windows branch regardless of host OS by checking the intent:
+  // the function keys off IS_WIN, so only assert here when actually on win32,
+  // and always assert the .exe/POSIX pass-through above (host-independent).
+  if (hermes.IS_WIN) {
+    const cmd = hermes.launcherSpawn('C:\\hermes\\bin\\hermes.cmd', ['whatsapp']);
+    assert.strictEqual(cmd.options.shell, true);
+    const ps1 = hermes.launcherSpawn('C:\\hermes\\bin\\hermes.ps1', ['doctor']);
+    assert.strictEqual(ps1.cmd, 'powershell.exe');
+    assert.ok(ps1.args.includes('-File'));
+    assert.ok(ps1.args.includes('C:\\hermes\\bin\\hermes.ps1'));
+    assert.strictEqual(ps1.args[ps1.args.length - 1], 'doctor');
+  }
+});
+
 test('provider catalog is well-formed', () => {
   assert.ok(hermes.PROVIDERS.length >= 12, 'expected a broad provider catalog');
   for (const p of hermes.PROVIDERS) {

@@ -29,6 +29,20 @@ function createWindow() {
     },
   });
   win.removeMenu?.();
+
+  // Harden against navigation away from the bundled UI. A dropped file or an
+  // in-page link must never replace our page (that new page would inherit the
+  // privileged preload bridge). External links open in the real browser.
+  const APP_URL = new URL('file://' + path.join(__dirname, 'renderer', 'index.html')).href;
+  win.webContents.on('will-navigate', (e, url) => {
+    if (url !== APP_URL) e.preventDefault();
+  });
+  win.webContents.on('will-attach-webview', (e) => e.preventDefault());
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https:\/\//.test(url)) shell.openExternal(url);
+    return { action: 'deny' };
+  });
+
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 }
 
@@ -59,6 +73,7 @@ function runStreaming(procId, cmd, args, opts = {}) {
         env: { ...process.env, FORCE_COLOR: '0', NO_COLOR: '1', TERM: 'dumb', ...opts.env },
         cwd: opts.cwd || os.homedir(),
         windowsHide: true,
+        ...(opts.shell ? { shell: opts.shell } : {}),
       });
     } catch (err) {
       send('proc:log', { procId, line: `✖ failed to start: ${err.message}` });
@@ -93,9 +108,11 @@ function runHermes(args, timeoutMs = 60000) {
     const bin = hermes.findHermesBin();
     if (!bin) { resolve({ code: -1, out: 'hermes CLI not found' }); return; }
     let out = '';
-    const child = spawn(bin, args, {
+    const s = hermes.launcherSpawn(bin, args);
+    const child = spawn(s.cmd, s.args, {
       env: { ...process.env, FORCE_COLOR: '0', NO_COLOR: '1', TERM: 'dumb' },
       windowsHide: true,
+      ...s.options,
     });
     const timer = setTimeout(() => { try { child.kill(); } catch {} }, timeoutMs);
     child.stdout.on('data', (b) => { out += b; });
@@ -268,11 +285,22 @@ ipcMain.handle('models:save', async (_e, { keys, defaultProviderId, defaultModel
     if (defaultProviderId) {
       const cmds = hermes.modelConfigCommands(defaultProviderId, defaultModel,
         { baseUrl: defaultBaseUrl, apiKey: defaultApiKey });
+      // never surface a raw api_key in logs or error text sent to the renderer
+      const secrets = [defaultApiKey, ...Object.values(keys || {})].filter((s) => s && String(s).length >= 6);
+      const redact = (s) => {
+        let out = String(s == null ? '' : s);
+        for (const sec of secrets) out = out.split(sec).join('••••••');
+        return out;
+      };
+      const redactArgs = (args) => args.map((a) => (a.startsWith('model.') ? a : redact(a)));
       for (const args of cmds) {
-        if (MOCK) { results.push({ args, code: 0 }); continue; }
+        if (MOCK) { results.push({ args: redactArgs(args), code: 0 }); continue; }
         const r = await runHermes(args, 90000);
-        results.push({ args, code: r.code, out: r.out.slice(-400) });
-        if (r.code !== 0) return { ok: false, error: `hermes ${args.join(' ')} failed:\n${r.out.slice(-800)}`, results };
+        results.push({ args: redactArgs(args), code: r.code, out: redact(r.out.slice(-400)) });
+        if (r.code !== 0) {
+          const label = args[2] || args.join(' ');       // e.g. "model.api_key"
+          return { ok: false, error: `hermes config set ${label} failed:\n${redact(r.out.slice(-800))}`, results };
+        }
       }
     }
     return { ok: true, results, envPath: hermes.envPath() };
@@ -289,10 +317,19 @@ ipcMain.handle('telegram:verify', async (_e, token) => {
   if (MOCK) return { ok: true, bot: { username: 'mock_bot', name: 'Mock Bot' } };
   try {
     const j = await fetchJson(`https://api.telegram.org/bot${t}/getMe`);
-    if (!j.ok) return { ok: false, error: 'Telegram rejected the token.' };
+    // A 401/403 comes back through the catch below (fetchJson rejects on !ok);
+    // reaching here means Telegram accepted the request.
+    if (!j.ok) return { ok: false, rejected: true, error: 'Telegram rejected the token.' };
     return { ok: true, bot: { username: j.result.username, name: j.result.first_name } };
   } catch (err) {
-    return { ok: false, error: `Could not reach Telegram: ${err.message}` };
+    const rejected = /key rejected|HTTP 40[13]|HTTP 404/.test(err.message);
+    return {
+      ok: false,
+      rejected,
+      // format is valid and this was a network problem, not a bad token
+      unreachable: !rejected,
+      error: rejected ? 'Telegram rejected the token.' : `Could not reach Telegram (${err.message}).`,
+    };
   }
 });
 
@@ -334,7 +371,8 @@ ipcMain.handle('whatsapp:pair', async () => {
     send('proc:exit', { procId: 'whatsapp', code: -1 });
     return { code: -1 };
   }
-  return runStreaming('whatsapp', bin, ['whatsapp']);
+  const s = hermes.launcherSpawn(bin, ['whatsapp']);
+  return runStreaming('whatsapp', s.cmd, s.args, s.options);
 });
 
 ipcMain.handle('proc:stop', (_e, procId) => {
@@ -349,10 +387,12 @@ ipcMain.handle('finish:doctor', async () => {
   }
   const bin = hermes.findHermesBin();
   if (!bin) {
+    send('proc:log', { procId: 'doctor', line: 'hermes CLI not found — is Hermes installed? Go back to the Install step.\n' });
     send('proc:exit', { procId: 'doctor', code: -1 });
     return { code: -1 };
   }
-  return runStreaming('doctor', bin, ['doctor']);
+  const s = hermes.launcherSpawn(bin, ['doctor']);
+  return runStreaming('doctor', s.cmd, s.args, s.options);
 });
 
 ipcMain.handle('finish:gateway', async (_e, mode) => {
@@ -367,10 +407,12 @@ ipcMain.handle('finish:gateway', async (_e, mode) => {
   if (!bin) return { ok: false, error: 'hermes CLI not found' };
   if (mode === 'service') {
     send('proc:log', { procId: 'gateway', line: '$ hermes gateway install\n' });
-    const r1 = await runStreaming('gateway', bin, ['gateway', 'install']);
+    const si = hermes.launcherSpawn(bin, ['gateway', 'install']);
+    const r1 = await runStreaming('gateway', si.cmd, si.args, si.options);
     if (r1.code !== 0) return { ok: false, error: 'gateway install failed' };
     send('proc:log', { procId: 'gateway', line: '$ hermes gateway start\n' });
-    const r2 = await runStreaming('gateway', bin, ['gateway', 'start']);
+    const ss = hermes.launcherSpawn(bin, ['gateway', 'start']);
+    const r2 = await runStreaming('gateway', ss.cmd, ss.args, ss.options);
     return { ok: r2.code === 0 };
   }
   const opened = openInTerminal('gateway run');

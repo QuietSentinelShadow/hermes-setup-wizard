@@ -1,0 +1,37 @@
+HERMES SETUP WIZARD — install instructions
+==========================================
+
+This app sets up your own AI agent (NousResearch Hermes) that you can
+message from Telegram or WhatsApp. The wizard walks you through everything.
+
+MAC
+---
+1. Open "Hermes Setup Wizard-<version>-mac-universal.dmg".
+2. Drag the app into Applications.
+3. IMPORTANT (first launch only): RIGHT-CLICK the app -> Open -> Open.
+   (The app isn't signed with an Apple certificate, so a normal double-click
+   shows a warning. If you don't see "Open": System Settings -> Privacy &
+   Security -> scroll down -> "Open Anyway".)
+
+WINDOWS
+-------
+1. Run "Hermes Setup Wizard-<version>-win-x64.exe".
+2. If a blue "Windows protected your PC" SmartScreen box appears:
+   click "More info" -> "Run anyway". (Same reason: unsigned app.)
+
+THEN
+----
+Just follow the wizard:
+ - it installs the Hermes Agent,
+ - you pick an AI model (paste an API key, or use free local Ollama/LM Studio),
+ - you connect Telegram (1 minute with @BotFather) and/or WhatsApp (scan a QR),
+ - it starts the agent in the background.
+When it's done, send your bot a message and say hi.
+
+UPDATES
+-------
+The app tells you when a new version is out (sidebar -> "Check for updates")
+and shows what changed. Download + run the new installer — it upgrades in
+place, your agent and settings are untouched.
+
+Questions? Ask the friend who sent you this. :)

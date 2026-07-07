@@ -93,8 +93,11 @@ function refreshChrome() {
 
   let nextOk = true;
   if (id === 'install') nextOk = state.installDone || (state.sys && state.sys.installed);
-  if (id === 'models') nextOk = state.modelsSaved;
-  if (id === 'telegram') nextOk = Boolean(state.telegram);
+  // A machine that already has a provider key on file (or a prior Hermes
+  // install) has a working model config — don't force a re-save to continue.
+  const modelsAlready = state.sys && (state.sys.existing.providerKeys.length > 0 || state.sys.installed);
+  if (id === 'models') nextOk = state.modelsSaved || modelsAlready;
+  if (id === 'telegram') nextOk = Boolean(state.telegram) || Boolean(state.sys?.existing.telegram);
   if (id === 'whatsapp') nextOk = state.whatsappEnabled;
   btnNext.disabled = !nextOk && id !== 'welcome' && id !== 'finish';
 
@@ -359,15 +362,32 @@ function renderTelegram() {
     a.addEventListener('click', () => window.wizard.openExternal(a.dataset.url));
   });
   $('#btn-tg-save').addEventListener('click', async () => {
+    const btn = $('#btn-tg-save');
+    if (btn.disabled) return;
     const token = $('#tg-token').value;
+    btn.disabled = true;
     setStatus('tg-status', 'Checking with Telegram…', 'busy');
-    const v = await window.wizard.verifyTelegram(token);
-    if (!v.ok) { setStatus('tg-status', `✖ ${v.error}`, 'err'); return; }
-    const s = await window.wizard.saveTelegram(token);
-    if (!s.ok) { setStatus('tg-status', `✖ ${s.error}`, 'err'); return; }
-    state.telegram = v.bot;
-    setStatus('tg-status', `✓ Connected to @${v.bot.username} and saved.`, 'ok');
-    refreshChrome();
+    try {
+      const v = await window.wizard.verifyTelegram(token);
+      // A confirmed-bad token (rejected or wrong format) blocks saving.
+      if (!v.ok && v.rejected !== false && !v.unreachable) {
+        setStatus('tg-status', `✖ ${v.error}`, 'err');
+        return;
+      }
+      const s = await window.wizard.saveTelegram(token);
+      if (!s.ok) { setStatus('tg-status', `✖ ${s.error}`, 'err'); return; }
+      if (v.ok) {
+        state.telegram = v.bot;
+        setStatus('tg-status', `✓ Connected to @${v.bot.username} and saved.`, 'ok');
+      } else {
+        // valid format, couldn't reach Telegram to confirm — saved regardless
+        state.telegram = { username: '(saved, not yet confirmed)' };
+        setStatus('tg-status', `✓ Token saved. ${v.error} It'll be used once you're online.`, 'ok');
+      }
+      refreshChrome();
+    } finally {
+      btn.disabled = false;
+    }
   });
   refreshChrome();
 }
@@ -391,16 +411,23 @@ function renderWhatsapp() {
   if (state.sys?.existing.whatsapp) state.whatsappEnabled = true;
 
   $('#btn-wa-pair').addEventListener('click', async () => {
-    const en = await window.wizard.enableWhatsapp(true);
-    if (!en.ok) { setStatus('wa-status', `✖ ${en.error}`, 'err'); return; }
-    state.whatsappEnabled = true;
-    refreshChrome();
-    setStatus('wa-status', 'Waiting for QR / pairing…', 'busy');
-    $('#btn-wa-stop').style.display = '';
-    termFor('whatsapp').textContent = '';
-    const r = await window.wizard.pairWhatsapp();
-    $('#btn-wa-stop').style.display = 'none';
-    setStatus('wa-status', r.code === 0 ? '✓ WhatsApp linked.' : 'Pairing ended — you can retry or pair later from a terminal.', r.code === 0 ? 'ok' : 'busy');
+    const btn = $('#btn-wa-pair');
+    if (btn.disabled) return;             // guard against a second pairing process
+    btn.disabled = true;
+    try {
+      const en = await window.wizard.enableWhatsapp(true);
+      if (!en.ok) { setStatus('wa-status', `✖ ${en.error}`, 'err'); return; }
+      state.whatsappEnabled = true;
+      refreshChrome();
+      setStatus('wa-status', 'Waiting for QR / pairing…', 'busy');
+      $('#btn-wa-stop').style.display = '';
+      termFor('whatsapp').textContent = '';
+      const r = await window.wizard.pairWhatsapp();
+      $('#btn-wa-stop').style.display = 'none';
+      setStatus('wa-status', r.code === 0 ? '✓ WhatsApp linked.' : 'Pairing ended — you can retry or pair later from a terminal.', r.code === 0 ? 'ok' : 'busy');
+    } finally {
+      btn.disabled = false;
+    }
   });
   $('#btn-wa-stop').addEventListener('click', () => window.wizard.stopProc('whatsapp'));
   refreshChrome();
