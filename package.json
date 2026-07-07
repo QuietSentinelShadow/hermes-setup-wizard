@@ -1,0 +1,61 @@
+{
+  "name": "hermes-setup-wizard",
+  "productName": "Hermes Setup Wizard",
+  "version": "1.0.0",
+  "description": "Desktop wizard that installs and configures the NousResearch Hermes Agent with Telegram, WhatsApp and model providers.",
+  "main": "main.js",
+  "license": "MIT",
+  "author": {
+    "name": "AMTOC",
+    "email": "amtocbot@gmail.com"
+  },
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/unit/*.test.js",
+    "test:e2e": "playwright test",
+    "icon": "python3 scripts/make_icon.py",
+    "dist:mac": "electron-builder --mac --universal",
+    "dist:win": "electron-builder --win --x64",
+    "dist": "npm run dist:mac && npm run dist:win"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.1",
+    "electron": "^33.3.1",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.amtoc.hermes-setup-wizard",
+    "productName": "Hermes Setup Wizard",
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "files": [
+      "main.js",
+      "preload.js",
+      "lib/**/*",
+      "renderer/**/*",
+      "CHANGELOG.md",
+      "build/icon.png"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "mac": {
+      "category": "public.app-category.utilities",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "identity": null
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "zip"
+      ]
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "deleteAppDataOnUninstall": false
+    }
+  }
+}

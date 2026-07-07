@@ -1,0 +1,93 @@
+# Hermes Setup Wizard
+
+A Mac/Windows desktop app that installs and configures the
+[NousResearch Hermes Agent](https://github.com/NousResearch/Hermes-Agent)
+through a friendly step-by-step wizard — made for sharing with friends who
+don't live in a terminal.
+
+**What it sets up**
+
+1. **Hermes Agent** — runs the official NousResearch installer
+   (`install.sh` / `install.ps1`), no admin rights needed.
+2. **Models & providers** — add API keys for any of: OpenRouter, OpenAI,
+   Anthropic, Google AI Studio, xAI, DeepSeek, NVIDIA NIM, Hugging Face,
+   Z.AI/GLM, Kimi/Moonshot, MiniMax, Nous Portal (OAuth), local **Ollama** /
+   **LM Studio**, or any custom OpenAI-compatible endpoint. Keys are verified
+   live, available models listed, and a default model chosen.
+3. **Telegram** — guided @BotFather bot creation, token verified against the
+   Telegram API and saved.
+4. **WhatsApp** — QR pairing (like WhatsApp Web) shown right in the app.
+5. **Gateway** — one click to run Hermes as a background service
+   (launchd / Windows) or in a terminal, plus a `hermes doctor` health check.
+
+Everything the wizard writes goes to the standard Hermes locations
+(`~/.hermes/.env`, `hermes config set …`), so `hermes setup` and the wizard
+can be mixed freely.
+
+## For friends installing it
+
+- **macOS**: open the `.dmg`, drag the app to Applications. The app is not
+  code-signed, so the first launch needs: **right-click the app → Open →
+  Open**. (Or: System Settings → Privacy & Security → "Open Anyway".)
+- **Windows**: run the `.exe` installer. If SmartScreen appears, click
+  **More info → Run anyway** (unsigned app).
+
+Then just follow the wizard.
+
+## Updates
+
+The app checks for new versions (sidebar → **Check for updates**) and shows
+the release notes of what changed. Downloading the new installer and running
+it upgrades the app **in place** — Hermes Agent settings are untouched.
+**What's new** in the sidebar shows the bundled changelog.
+
+The update feed defaults to this repo's GitHub Releases; override it with the
+`HERMES_WIZARD_UPDATE_FEED` environment variable (GitHub Releases API JSON or
+a plain `{"releases":[{"version","notes","mac","win"}]}` manifest).
+
+## Development
+
+```bash
+npm install
+npm start                # run the app
+HERMES_SETUP_MOCK=1 npm start   # UI walkthrough without touching anything
+
+npm test                 # unit tests (node:test)
+npm run test:e2e         # Playwright end-to-end (mock mode, full wizard walk)
+
+npm run icon             # regenerate build/icon.png (needs Pillow)
+npm run dist:mac         # dist/: universal .dmg + .zip
+npm run dist:win         # dist/: NSIS installer .exe + .zip (cross-built on macOS)
+```
+
+Useful env vars: `HERMES_SETUP_MOCK=1` (simulate installer/pairing),
+`HERMES_SETUP_HOME` (redirect the Hermes home directory),
+`HERMES_SETUP_BIN` (path to the hermes CLI).
+
+## Releasing a new version
+
+1. Bump `version` in `package.json`.
+2. Add a section to `CHANGELOG.md` — this is what users read under
+   **What's new**, and (via the GitHub release body) in the update prompt.
+3. `npm test && npm run test:e2e && npm run dist`
+4. Create a GitHub release tagged `v<version>` on the
+   `amtocbot/hermes-setup-wizard` repo, paste the changelog section into the
+   release notes, and attach the artifacts from `dist/`
+   (`…-mac-universal.dmg` and `…-win-x64.exe` at minimum).
+5. Installed apps will offer the new version with those notes on their next
+   update check; the installers upgrade in place.
+
+> Note: fully silent auto-update (electron-updater) needs code-signing
+> certificates on macOS. The current flow — notify, show notes, download,
+> run installer — works unsigned.
+
+## Architecture
+
+- `main.js` — Electron main process: spawns the official installer and
+  `hermes` CLI with streamed output, verifies provider keys / Telegram tokens
+  over HTTPS, writes `.env` values, checks the update feed.
+- `preload.js` — the only bridge (contextIsolation on, sandbox on).
+- `renderer/` — the wizard UI (vanilla JS, no framework).
+- `lib/hermes.js` — pure logic: paths, `.env` upserts, provider catalog
+  (mirrors `hermes_cli/auth.py` PROVIDER_REGISTRY), command builders.
+- `lib/updates.js` — release feed parsing / version comparison.

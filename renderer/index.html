@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:" />
+  <title>Hermes Setup Wizard</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app">
+    <aside id="sidebar">
+      <div class="brand">
+        <div class="brand-mark">☤</div>
+        <div>
+          <div class="brand-title">Hermes Agent</div>
+          <div class="brand-sub">Setup Wizard</div>
+        </div>
+      </div>
+      <nav id="steps-nav"></nav>
+      <div class="sidebar-foot">
+        <div id="sys-badge"></div>
+        <div id="ver-line" style="margin-top:8px">
+          <span id="ver-num"></span><br>
+          <a id="lnk-updates" data-testid="lnk-updates">Check for updates</a> ·
+          <a id="lnk-whatsnew">What's new</a>
+        </div>
+      </div>
+    </aside>
+
+    <main id="content">
+      <section id="panel"></section>
+      <footer id="footer">
+        <button id="btn-back" class="btn ghost" data-testid="btn-back">Back</button>
+        <div class="spacer"></div>
+        <button id="btn-skip" class="btn ghost" data-testid="btn-skip">Skip this step</button>
+        <button id="btn-next" class="btn primary" data-testid="btn-next">Next</button>
+      </footer>
+    </main>
+  </div>
+  <div id="modal" hidden>
+    <div class="modal-box">
+      <h2 id="modal-title"></h2>
+      <pre id="modal-body" data-testid="modal-body"></pre>
+      <div class="row" style="margin-top:14px">
+        <button id="modal-action" class="btn primary small"></button>
+        <div class="spacer"></div>
+        <button id="modal-close" class="btn small ghost" data-testid="modal-close">Close</button>
+      </div>
+    </div>
+  </div>
+  <script src="wizard.js"></script>
+</body>
+</html>
