@@ -27,6 +27,12 @@ contextBridge.exposeInMainWorld('wizard', {
   checkUpdates: () => ipcRenderer.invoke('updates:check'),
   getChangelog: () => ipcRenderer.invoke('updates:changelog'),
 
+  portPlan: (opts) => ipcRenderer.invoke('port:plan', opts),
+  portExport: (opts) => ipcRenderer.invoke('port:export', opts),
+  portPickFile: () => ipcRenderer.invoke('port:pickFile'),
+  portInspect: (opts) => ipcRenderer.invoke('port:inspect', opts),
+  portImport: (opts) => ipcRenderer.invoke('port:import', opts),
+
   onLog: (cb) => ipcRenderer.on('proc:log', (_e, m) => cb(m)),
   onExit: (cb) => ipcRenderer.on('proc:exit', (_e, m) => cb(m)),
 });

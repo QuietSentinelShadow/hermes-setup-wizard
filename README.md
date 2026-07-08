@@ -42,6 +42,26 @@ can be mixed freely.
 
 Then just follow the wizard.
 
+## Migrate / clone an agent to another machine
+
+From the Welcome screen, **Migrate / clone an agent** packages a complete
+Hermes instance into a single **passphrase-encrypted `.hermesport` file** you
+can move to another computer (USB, AirDrop, scp, cloud — anything).
+
+- **Export** bundles the agent's *identity*: `config.yaml`, `.env` (all secret
+  keys), `auth.json` (OAuth tokens), `SOUL.md`, `memories/`, `cron/`, skills,
+  WhatsApp/device pairings, and — optionally — full `sessions/` chat history.
+  Reinstallable program files (`hermes-agent/`, `node/`, `bin/`) and caches are
+  left out. The file is encrypted with **AES-256-GCM** under a **scrypt**-derived
+  key and authenticated, so a wrong passphrase or any tampering is detected.
+- **Import** on the target machine (after installing Hermes) previews the
+  bundle, backs up any existing config, restores the files, and rewrites
+  machine-specific paths for the new home. Cross-OS moves are flagged with a
+  warning (secrets/memories transfer; some paths and the WhatsApp pairing may
+  need redoing).
+
+The format is documented at the top of [`lib/portability.js`](lib/portability.js).
+
 ## Updates
 
 The app checks for new versions (sidebar → **Check for updates**) and shows
@@ -115,3 +135,7 @@ tests on Linux, macOS and Windows). Licensed under [MIT](LICENSE).
 - `lib/hermes.js` — pure logic: paths, `.env` upserts, provider catalog
   (mirrors `hermes_cli/auth.py` PROVIDER_REGISTRY), command builders.
 - `lib/updates.js` — release feed parsing / version comparison.
+- `lib/portability.js` — what to include/exclude when porting an instance, the
+  `.hermesport` crypto format, and path rewriting (pure, unit-tested).
+- `lib/portio.js` — builds/reads/restores the encrypted bundle (tar + streaming
+  AES-256-GCM).

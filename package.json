@@ -1,8 +1,8 @@
 {
   "name": "hermes-setup-wizard",
   "productName": "Hermes Setup Wizard",
-  "version": "1.0.0",
-  "description": "Desktop wizard that installs and configures the NousResearch Hermes Agent with Telegram, WhatsApp and model providers.",
+  "version": "1.1.0",
+  "description": "Desktop wizard that installs, configures and migrates the NousResearch Hermes Agent with Telegram, WhatsApp and model providers.",
   "main": "main.js",
   "license": "MIT",
   "author": {
@@ -65,5 +65,8 @@
       "perMachine": false,
       "deleteAppDataOnUninstall": false
     }
+  },
+  "dependencies": {
+    "tar": "^7.5.19"
   }
 }

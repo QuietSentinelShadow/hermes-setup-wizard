@@ -2,6 +2,20 @@
 
 All notable changes to the Hermes Setup Wizard.
 
+## 1.1.0 — 2026-07-08
+
+- **Migrate / clone an agent between machines.** New "Migrate an agent" flow
+  (from the Welcome screen) that packages a complete Hermes instance — config,
+  secret keys, OAuth/auth tokens, SOUL, memories, scheduled jobs, skills,
+  device pairings and (optionally) full chat history — into a single
+  passphrase-encrypted `.hermesport` file.
+  - AES-256-GCM encryption with a scrypt-derived key; contents are
+    authenticated (tampering is detected on import).
+  - Reinstallable program files and caches are deliberately left out.
+  - Import previews the bundle before restoring, backs up existing config,
+    rewrites machine-specific paths for the new home, and warns on cross-OS
+    moves.
+
 ## 1.0.0 — 2026-07-07
 
 First release. 🎉

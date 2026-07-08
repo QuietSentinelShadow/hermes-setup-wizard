@@ -11,8 +11,11 @@ const STEPS = [
 ];
 
 const state = {
+  mode: 'wizard',        // 'wizard' | 'migrate'
   step: 0,
   sys: null,
+  portFile: null,        // chosen bundle path (import)
+  portMeta: null,        // decrypted bundle metadata (import)
   providers: [],
   installDone: false,
   installRunning: false,
@@ -125,7 +128,15 @@ function go(i) {
 }
 
 /* ---------- step renderers ---------- */
+const footer = $('#footer');
 function render() {
+  if (state.mode === 'migrate') {
+    footer.style.display = 'none';
+    panel.innerHTML = '';
+    renderMigrate();
+    return;
+  }
+  footer.style.display = '';
   const id = STEPS[state.step].id;
   const fn = {
     welcome: renderWelcome, install: renderInstall, models: renderModels,
@@ -135,6 +146,9 @@ function render() {
   fn();
   refreshChrome();
 }
+
+function enterMigrate() { state.mode = 'migrate'; render(); }
+function exitMigrate() { state.mode = 'wizard'; render(); }
 
 /* ----- 1. welcome ----- */
 function renderWelcome() {
@@ -157,7 +171,204 @@ function renderWelcome() {
     </div>
     <p class="lead" style="margin-top:8px">You will need: an internet connection, and (optionally) a
     Telegram account and/or WhatsApp on your phone. Everything can be changed later with
-    <code>hermes setup</code>.</p>`;
+    <code>hermes setup</code>.</p>
+    <div class="card" style="border-color:var(--gold-dim)">
+      <h2 style="margin-top:0">Already have Hermes on another machine?</h2>
+      <p style="margin-bottom:12px">Move a complete agent — its config, secret keys, memories and
+      pairings — between computers as one encrypted file.</p>
+      <button class="btn" id="btn-migrate" data-testid="btn-migrate">Migrate / clone an agent →</button>
+    </div>`;
+  $('#btn-migrate').addEventListener('click', enterMigrate);
+}
+
+/* ----- migration (export / import a whole instance) ----- */
+function fmtBytes(n) {
+  if (n == null) return '?';
+  if (n < 1024) return `${n} B`;
+  if (n < 1048576) return `${(n / 1024).toFixed(0)} KB`;
+  if (n < 1073741824) return `${(n / 1048576).toFixed(1)} MB`;
+  return `${(n / 1073741824).toFixed(2)} GB`;
+}
+
+const CATEGORY_LABEL = {
+  secrets: 'Secret keys & tokens', config: 'Configuration', identity: 'Identity (SOUL)',
+  memory: 'Memories', sessions: 'Chat history', cron: 'Scheduled jobs',
+  skills: 'Skills', pairing: 'Device pairings', shared: 'Shared files', other: 'Other data',
+};
+
+function renderMigrate() {
+  const tab = state.migrateTab || 'export';
+  panel.innerHTML = `
+    <div class="row" style="justify-content:space-between;align-items:center">
+      <h1 style="margin:0">Migrate an agent</h1>
+      <button class="btn ghost small" id="btn-migrate-back" data-testid="btn-migrate-back">← Back to setup</button>
+    </div>
+    <p class="lead">Move a complete Hermes instance between machines. The bundle is a single
+    <code>.hermesport</code> file, encrypted with a passphrase you choose — it holds everything that
+    makes this agent <i>itself</i>, and leaves out the reinstallable program files.</p>
+    <div class="choice-row" style="margin-top:0">
+      <div class="choice ${tab === 'export' ? '' : ''}" id="tab-export" data-testid="tab-export"
+           style="${tab === 'export' ? 'border-color:var(--gold)' : ''}">
+        <div class="t">⬆ Export from this machine</div>
+        <div class="d">Package this agent into an encrypted file to carry to another computer.</div>
+      </div>
+      <div class="choice" id="tab-import" data-testid="tab-import"
+           style="${tab === 'import' ? 'border-color:var(--gold)' : ''}">
+        <div class="t">⬇ Import to this machine</div>
+        <div class="d">Restore an agent from a <code>.hermesport</code> file made on another computer.</div>
+      </div>
+    </div>
+    <div id="migrate-body"></div>`;
+  $('#btn-migrate-back').addEventListener('click', exitMigrate);
+  $('#tab-export').addEventListener('click', () => { state.migrateTab = 'export'; render(); });
+  $('#tab-import').addEventListener('click', () => { state.migrateTab = 'import'; render(); });
+  if (tab === 'export') renderExport(); else renderImport();
+}
+
+async function renderExport() {
+  const body = $('#migrate-body');
+  body.innerHTML = `
+    <div class="card">
+      <h2 style="margin-top:0">What will be included</h2>
+      <div id="export-plan" class="status busy">Scanning ~/.hermes…</div>
+    </div>
+    <div class="card">
+      <label class="field">Encryption passphrase (remember it — it can't be recovered)</label>
+      <input type="password" id="exp-pass" data-testid="exp-pass" placeholder="at least 8 characters">
+      <label class="field">Confirm passphrase</label>
+      <input type="password" id="exp-pass2" data-testid="exp-pass2" placeholder="type it again">
+      <label style="display:flex;align-items:center;gap:8px;margin-top:12px;color:var(--muted);font-size:13.5px">
+        <input type="checkbox" id="exp-sessions" data-testid="exp-sessions" checked style="width:auto"> Include full chat/session history
+      </label>
+      <div class="row" style="margin-top:14px">
+        <button class="btn primary" id="btn-do-export" data-testid="btn-do-export">Export encrypted bundle…</button>
+        <div class="status" id="export-status" style="margin-top:0"></div>
+      </div>
+    </div>`;
+
+  async function loadPlan() {
+    const includeSessions = $('#exp-sessions').checked;
+    const plan = await window.wizard.portPlan({ includeSessions });
+    const el = $('#export-plan');
+    if (!plan.ok) { el.textContent = `✖ ${plan.error}`; el.className = 'status err'; return; }
+    const byCat = {};
+    for (const e of plan.entries) byCat[e.category] = (byCat[e.category] || 0) + e.bytes;
+    const rows = Object.entries(byCat).map(([c, b]) =>
+      `<li><span class="ok">✓</span>${esc(CATEGORY_LABEL[c] || c)} — ${fmtBytes(b)}</li>`).join('');
+    el.className = '';
+    el.innerHTML = `<ul class="summary-list">${rows}</ul>
+      <p style="color:var(--muted);font-size:13px;margin-top:8px">Total: ${fmtBytes(plan.totalBytes)} across ${plan.fileCount} files.
+      Left out: program files and caches (reinstalled on the other machine).</p>`;
+  }
+  $('#exp-sessions').addEventListener('change', loadPlan);
+  await loadPlan();
+
+  $('#btn-do-export').addEventListener('click', async () => {
+    const btn = $('#btn-do-export');
+    const p1 = $('#exp-pass').value, p2 = $('#exp-pass2').value;
+    if (p1.length < 8) { setStatus('export-status', 'Passphrase must be at least 8 characters.', 'err'); return; }
+    if (p1 !== p2) { setStatus('export-status', 'Passphrases do not match.', 'err'); return; }
+    btn.disabled = true;
+    setStatus('export-status', 'Encrypting & writing bundle…', 'busy');
+    try {
+      const res = await window.wizard.portExport({ passphrase: p1, includeSessions: $('#exp-sessions').checked });
+      if (res.canceled) { setStatus('export-status', 'Cancelled.', ''); return; }
+      if (!res.ok) { setStatus('export-status', `✖ ${res.error}`, 'err'); return; }
+      setStatus('export-status', `✓ Saved ${fmtBytes(res.bytesWritten)} → ${res.outFile}`, 'ok');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+}
+
+function renderImport() {
+  const body = $('#migrate-body');
+  body.innerHTML = `
+    <div class="card">
+      <div class="row">
+        <button class="btn" id="btn-pick" data-testid="btn-pick">Choose .hermesport file…</button>
+        <div class="status" id="pick-status" style="margin-top:0">${state.portFile ? '✓ ' + esc(state.portFile) : 'No file chosen'}</div>
+      </div>
+      <label class="field">Passphrase</label>
+      <div class="row">
+        <input type="password" id="imp-pass" data-testid="imp-pass" placeholder="the passphrase used when exporting">
+        <button class="btn small" id="btn-unlock" data-testid="btn-unlock">Unlock &amp; preview</button>
+      </div>
+      <div class="status" id="unlock-status"></div>
+    </div>
+    <div id="import-detail"></div>`;
+
+  $('#btn-pick').addEventListener('click', async () => {
+    const r = await window.wizard.portPickFile();
+    if (r.canceled || !r.ok || !r.filePath) return;
+    state.portFile = r.filePath;
+    state.portMeta = null;
+    setStatus('pick-status', `✓ ${r.filePath}`, 'ok');
+  });
+
+  $('#btn-unlock').addEventListener('click', async () => {
+    if (!state.portFile) { setStatus('unlock-status', 'Choose a file first.', 'err'); return; }
+    const pass = $('#imp-pass').value;
+    setStatus('unlock-status', 'Decrypting metadata…', 'busy');
+    const r = await window.wizard.portInspect({ file: state.portFile, passphrase: pass });
+    if (!r.ok) { setStatus('unlock-status', `✖ ${r.error}`, 'err'); return; }
+    state.portMeta = r.meta;
+    state.portPass = pass;
+    setStatus('unlock-status', '✓ Unlocked.', 'ok');
+    showImportDetail(r.meta);
+  });
+
+  if (state.portMeta) showImportDetail(state.portMeta);
+}
+
+function showImportDetail(meta) {
+  const el = $('#import-detail');
+  const cross = meta.sourcePlatform && meta.sourcePlatform !== state.sys.platform;
+  const plat = (p) => (p === 'darwin' ? 'macOS' : p === 'win32' ? 'Windows' : p);
+  const rows = (meta.entries || []).map((e) =>
+    `<li><span class="ok">✓</span>${esc(CATEGORY_LABEL[e.category] || e.category)} — ${fmtBytes(e.bytes)}</li>`).join('');
+  el.innerHTML = `
+    <div class="card">
+      <h2 style="margin-top:0">This bundle</h2>
+      <div class="kv">
+        <span class="k">Created</span><span>${esc((meta.createdAt || '').replace('T', ' ').slice(0, 16) || 'unknown')}</span>
+        <span class="k">From</span><span>${esc(plat(meta.sourcePlatform))} · Hermes ${esc(meta.hermesVersion || '?')}</span>
+        <span class="k">Contents</span><span>${fmtBytes(meta.totalBytes)}, ${meta.fileCount} files</span>
+      </div>
+      <ul class="summary-list" style="margin-top:10px">${rows}</ul>
+      ${cross ? `<p class="status err" style="margin-top:8px">⚠ This bundle came from ${esc(plat(meta.sourcePlatform))} and you're on
+        ${esc(plat(state.sys.platform))}. Secrets and memories will transfer, but some machine-specific paths and the
+        WhatsApp pairing may need redoing.</p>` : ''}
+      <label style="display:flex;align-items:center;gap:8px;margin-top:12px;color:var(--muted);font-size:13.5px">
+        <input type="checkbox" id="imp-rewrite" data-testid="imp-rewrite" checked style="width:auto">
+        Adjust file paths inside the config for this machine (recommended)
+      </label>
+      <p style="color:var(--muted);font-size:13px;margin-top:10px">Restoring merges into this machine's
+      <code>~/.hermes</code> and overwrites matching files; your current <code>config.yaml</code>,
+      <code>.env</code>, <code>auth.json</code> and <code>SOUL.md</code> are backed up first.</p>
+      <div class="row" style="margin-top:6px">
+        <button class="btn primary" id="btn-do-import" data-testid="btn-do-import">Restore to this machine</button>
+        <div class="status" id="import-status" style="margin-top:0"></div>
+      </div>
+    </div>`;
+
+  $('#btn-do-import').addEventListener('click', async () => {
+    const btn = $('#btn-do-import');
+    btn.disabled = true;
+    setStatus('import-status', 'Restoring…', 'busy');
+    try {
+      const r = await window.wizard.portImport({
+        file: state.portFile, passphrase: state.portPass, rewrite: $('#imp-rewrite').checked,
+      });
+      if (!r.ok) { setStatus('import-status', `✖ ${r.error}`, 'err'); return; }
+      const parts = [`✓ Restored ${r.restoredEntries.length} items`];
+      if (r.rewritten.length) parts.push(`paths adjusted in ${r.rewritten.join(', ')}`);
+      if (r.backedUp) parts.push(`previous config backed up`);
+      setStatus('import-status', parts.join(' · '), 'ok');
+    } finally {
+      btn.disabled = false;
+    }
+  });
 }
 
 /* ----- 2. install ----- */

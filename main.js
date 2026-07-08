@@ -1,17 +1,20 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, shell, net } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, net, dialog } = require('electron');
 const { spawn } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const hermes = require('./lib/hermes');
 const updates = require('./lib/updates');
+const portability = require('./lib/portability');
+const portio = require('./lib/portio');
 
 const MOCK = process.env.HERMES_SETUP_MOCK === '1';
 
 let win = null;
 const children = new Map(); // procId -> ChildProcess
+let lastMockExport = null;   // remembers the export path so mock pickFile can find it
 
 function createWindow() {
   win = new BrowserWindow({
@@ -457,5 +460,101 @@ ipcMain.handle('updates:changelog', () => {
     return fs.readFileSync(path.join(app.getAppPath(), 'CHANGELOG.md'), 'utf8');
   } catch {
     return '(changelog not found)';
+  }
+});
+
+// ---------------------------------------------------------------------------
+// port / migrate a whole Hermes instance between machines
+// ---------------------------------------------------------------------------
+
+// Preview what an export from this machine would contain.
+ipcMain.handle('port:plan', (_e, { includeSessions } = {}) => {
+  try {
+    const home = hermes.hermesHome();
+    const plan = portability.planExport(home, { includeSessions: includeSessions !== false });
+    return { ok: true, home, ...plan };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+// Create the encrypted bundle. In MOCK/test mode an explicit outFile is passed
+// so no native save dialog is needed; otherwise we prompt for a destination.
+ipcMain.handle('port:export', async (_e, { passphrase, includeSessions, outFile } = {}) => {
+  try {
+    const home = hermes.hermesHome();
+    let dest = outFile;
+    if (!dest && MOCK) {
+      dest = path.join(os.tmpdir(), `hermes-e2e-export-${process.pid}.hermesport`);
+    }
+    if (!dest) {
+      const stamp = new Date().toISOString().slice(0, 10);
+      const r = await dialog.showSaveDialog(win, {
+        title: 'Export Hermes agent',
+        defaultPath: path.join(os.homedir(), `hermes-agent-${stamp}.hermesport`),
+        filters: [{ name: 'Hermes port bundle', extensions: ['hermesport'] }],
+      });
+      if (r.canceled || !r.filePath) return { ok: false, canceled: true };
+      dest = r.filePath;
+    }
+    const res = await portio.exportBundle({
+      home, outFile: dest, passphrase,
+      includeSessions: includeSessions !== false,
+      extraMeta: {
+        createdAt: new Date().toISOString(),
+        appVersion: app.getVersion(),
+        sourcePlatform: process.platform,
+        sourceArch: process.arch,
+        sourceHome: os.homedir(),
+      },
+    });
+    lastMockExport = dest;
+    return { ok: true, outFile: dest, bytesWritten: res.bytesWritten, entries: res.entries, totalBytes: res.totalBytes };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+// Pick a bundle file (returns the chosen path).
+ipcMain.handle('port:pickFile', async () => {
+  if (MOCK) return { ok: true, filePath: lastMockExport || '' };
+  const r = await dialog.showOpenDialog(win, {
+    title: 'Choose a Hermes agent bundle',
+    properties: ['openFile'],
+    filters: [{ name: 'Hermes port bundle', extensions: ['hermesport'] }],
+  });
+  if (r.canceled || !r.filePaths.length) return { ok: false, canceled: true };
+  return { ok: true, filePath: r.filePaths[0] };
+});
+
+// Decrypt just the metadata to validate the passphrase and preview contents.
+ipcMain.handle('port:inspect', (_e, { file, passphrase } = {}) => {
+  try {
+    const { meta, fileSize } = portio.inspectBundle({ file, passphrase });
+    return { ok: true, meta, fileSize };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+// Restore a bundle into this machine's Hermes home.
+ipcMain.handle('port:import', async (_e, { file, passphrase, rewrite } = {}) => {
+  try {
+    const targetHome = hermes.hermesHome();
+    const res = await portio.importBundle({
+      file, passphrase, targetHome, targetHomeDir: os.homedir(),
+      rewrite: rewrite !== false,
+    });
+    return {
+      ok: true,
+      restoredEntries: res.restoredEntries,
+      rewritten: res.rewritten,
+      backedUp: res.backedUp,
+      backupDir: res.backupDir,
+      sourcePlatform: res.meta.sourcePlatform,
+      crossPlatform: res.meta.sourcePlatform !== process.platform,
+    };
+  } catch (err) {
+    return { ok: false, error: err.message };
   }
 });
